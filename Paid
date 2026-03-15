@@ -1,0 +1,625 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- =========================
+-- WINDOW
+-- =========================
+local Window = Rayfield:CreateWindow({
+    Name = "Vision Hub",
+    LoadingTitle = "Vision Script",
+    LoadingSubtitle = "by Vision",
+    ConfigurationSaving = { Enabled = true },
+    Discord = {
+        Enabled = true,
+        Invite = "GYH92be25Z",
+        RememberJoins = true
+    },
+    KeySystem = false,
+    KeySettings = {
+        Title = "Vision Script Hub | Key",
+        Subtitle = "Link In Discord",
+        Note = "Key: https://discord.gg/Qff9uteV5H",
+        FileName = "VisionKey",
+        SaveKey = false,
+        GrabKeyFromSite = true,
+        Key = {"https://pastebin.com/raw/QZYyHa0H"}
+    }
+})
+
+if not Window then
+    warn("Failed to create window. Please check the Rayfield library or script parameters.")
+    return
+end
+
+local OffenseTab = Window:CreateTab("Offense", nil) -- Title, Image
+local OffenseSection = OffenseTab:CreateSection("Shooting") -- Changed 'Tab' to 'MainTab'
+
+-- =========================
+-- AUTO RELEASE TOGGLE + SLIDER
+-- =========================
+
+--// Services
+local RS = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+--// Player
+local player = Players.LocalPlayer
+
+--// Path you gave
+local shotMeter = workspace:WaitForChild("scriplic")
+    :WaitForChild("Properties")
+    :WaitForChild("ShotMeter")
+
+--// Remote
+local clientEvent = RS:WaitForChild("Game.Properties"):WaitForChild("ClientEvent")
+
+--// State
+local autoShootEnabled = false
+local fired = false
+local THRESHOLD = 0.834 -- default, slider will overwrite
+
+-- Toggle
+OffenseTab:CreateToggle({
+    Name = "Auto Perfect",
+    CurrentValue = false,
+    Flag = "AutoShootToggle",
+    Callback = function(state)
+        autoShootEnabled = state
+    end,
+})
+
+-- Slider
+OffenseTab:CreateSlider({
+    Name = "Shot Threshold",
+    Range = {0.1, 2},
+    Increment = 0.001,
+    Suffix = "",
+    CurrentValue = THRESHOLD,
+    Flag = "ShotThresholdSlider",
+    Callback = function(value)
+        THRESHOLD = value
+    end,
+})
+
+----------------------------------------------------
+-- MAIN LISTENER
+----------------------------------------------------
+shotMeter:GetPropertyChangedSignal("Value"):Connect(function()
+    if not autoShootEnabled then return end
+
+    local v = shotMeter.Value
+
+    -- fire instantly when crossing upward
+    if v >= THRESHOLD and not fired then
+        fired = true
+        clientEvent:FireServer("Shoot", false)
+    end
+
+    -- reset as soon as meter goes back below threshold
+    if v < THRESHOLD and fired then
+        fired = false
+    end
+end)
+
+
+-- =========================
+-- ANTI CONTEST TOGGLE
+-- =========================
+local AntiContest = false
+
+OffenseTab:CreateToggle({
+    Name = "Anti Contest",
+    CurrentValue = false,
+    Callback = function(Value)
+        AntiContest = Value
+
+        if AntiContest then
+            print("Not added yet")
+        end
+    end
+})
+
+local DefenseTab = Window:CreateTab("Defense", nil) -- Title, Image
+local DefenseSection = DefenseTab:CreateSection("Guarding") -- Changed 'Tab' to 'MainTab'
+
+-- =========================================
+-- GLOBAL VALUES
+-- =========================================
+
+_G.AutoGuardV1 = false
+_G.AutoGuardV2 = false
+_G.LegitAutoGuard = false
+
+_G.GuardDistanceV1 = 5
+_G.GuardDistanceV2 = 5
+_G.LegitGuardDistance = 5
+_G.LegitSmoothness = 0.15
+
+
+-- =========================================
+-- SERVICES
+-- =========================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Character, HRP, Humanoid
+
+local function UpdateCharacter()
+	Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+	HRP = Character:WaitForChild("HumanoidRootPart")
+	Humanoid = Character:WaitForChild("Humanoid")
+end
+
+LocalPlayer.CharacterAdded:Connect(UpdateCharacter)
+if LocalPlayer.Character then UpdateCharacter() end
+
+local function GetClosestPlayer()
+	local closest, minDist = nil, math.huge
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+			local dist = (p.Character.HumanoidRootPart.Position - HRP.Position).Magnitude
+			if dist < minDist then
+				minDist = dist
+				closest = p
+			end
+		end
+	end
+	return closest
+end
+
+
+-- =========================================
+-- MOBILE GUI CREATION
+-- =========================================
+
+local function CreateCircle(name, posX)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = name
+	gui.ResetOnSpawn = false
+	gui.Enabled = false
+	gui.Parent = LocalPlayer.PlayerGui
+
+	local btn = Instance.new("TextButton")
+	btn.Parent = gui
+	btn.Size = UDim2.new(0,95,0,95)
+	btn.Position = UDim2.new(0,posX,0,60)
+	btn.BackgroundColor3 = Color3.fromRGB(30,30,30)
+	btn.BackgroundTransparency = 0.1
+	btn.TextScaled = true
+	btn.Font = Enum.Font.GothamBold
+	btn.TextColor3 = Color3.fromRGB(255,255,255)
+	btn.TextStrokeTransparency = 0.85
+	btn.TextWrapped = true
+
+	local corner = Instance.new("UICorner", btn)
+	corner.CornerRadius = UDim.new(1,0)
+
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Thickness = 2
+	stroke.Color = Color3.fromRGB(255,255,255)
+	stroke.Transparency = 0.2
+
+	local dragging = false
+	local dragStart, startPos
+
+	btn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = btn.Position
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			btn.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	return gui, btn
+end
+
+local GuiV1, BtnV1 = CreateCircle("AGV1_GUI", 40)
+local GuiV2, BtnV2 = CreateCircle("AGV2_GUI", 170)
+local GuiLegit, BtnLegit = CreateCircle("AGL_GUI", 300)
+
+
+-- =========================================
+-- RAYFIELD CONTROLS (DEFENSE TAB)
+-- =========================================
+
+DefenseTab:CreateToggle({
+	Name = "Auto Guard V1 / Toggle: F",
+	CurrentValue = false,
+	Keybind = {Enabled = true, Key = Enum.KeyCode.F},
+	Callback = function(v)
+		GuiV1.Enabled = v
+	end
+})
+
+DefenseTab:CreateSlider({
+	Name = "Guard Distance V1",
+	Range = {1,20},
+	Increment = 1,
+	CurrentValue = 5,
+	Callback = function(v)
+		_G.GuardDistanceV1 = v
+	end
+})
+
+DefenseTab:CreateToggle({
+	Name = "Auto Guard V2 / Toggle: F",
+	CurrentValue = false,
+	Keybind = {Enabled = true, Key = Enum.KeyCode.F},
+	Callback = function(v)
+		GuiV2.Enabled = v
+	end
+})
+
+DefenseTab:CreateSlider({
+	Name = "Guard Distance V2",
+	Range = {1,20},
+	Increment = 1,
+	CurrentValue = 5,
+	Callback = function(v)
+		_G.GuardDistanceV2 = v
+	end
+})
+
+DefenseTab:CreateToggle({
+	Name = "Legit Auto Guard / Toggle: F",
+	CurrentValue = false,
+	Keybind = {Enabled = true, Key = Enum.KeyCode.F},
+	Callback = function(v)
+		GuiLegit.Enabled = v
+	end
+})
+
+DefenseTab:CreateSlider({
+	Name = "Guard Distance",
+	Range = {1,20},
+	Increment = 1,
+	CurrentValue = 5,
+	Callback = function(v)
+		_G.LegitGuardDistance = v
+	end
+})
+
+DefenseTab:CreateSlider({
+	Name = "Smoothness",
+	Range = {0,1},
+	Increment = 0.01,
+	CurrentValue = 0.15,
+	Callback = function(v)
+		_G.LegitSmoothness = v
+	end
+})
+
+
+-- =========================================
+-- BUTTON CLICK BEHAVIOR
+-- =========================================
+
+BtnV1.MouseButton1Click:Connect(function()
+	_G.AutoGuardV1 = not _G.AutoGuardV1
+end)
+
+BtnV2.MouseButton1Click:Connect(function()
+	_G.AutoGuardV2 = not _G.AutoGuardV2
+end)
+
+BtnLegit.MouseButton1Click:Connect(function()
+	_G.LegitAutoGuard = not _G.LegitAutoGuard
+end)
+
+
+-- =========================================
+-- MAIN LOOP
+-- =========================================
+
+local CurrentTargetV1
+local CurrentTargetV2
+local CurrentTargetLegit
+local lastMoveDir = Vector3.zero
+local currentSpeed = 0
+
+RunService.RenderStepped:Connect(function()
+
+	if not Character or not HRP or not Humanoid then return end
+
+	-- V1
+	if _G.AutoGuardV1 then
+		CurrentTargetV1 = CurrentTargetV1 or GetClosestPlayer()
+		if CurrentTargetV1 and CurrentTargetV1.Character then
+			local t = CurrentTargetV1.Character:FindFirstChild("HumanoidRootPart")
+			if t then
+				local pos = t.Position + t.CFrame.LookVector * _G.GuardDistanceV1
+				Humanoid:Move((pos - HRP.Position).Unit, false)
+			end
+		end
+	end
+
+	-- V2
+	if _G.AutoGuardV2 then
+		CurrentTargetV2 = CurrentTargetV2 or GetClosestPlayer()
+		if CurrentTargetV2 and CurrentTargetV2.Character then
+			local t = CurrentTargetV2.Character:FindFirstChild("HumanoidRootPart")
+			if t then
+				local predicted = t.Position + t.Velocity * 0.12
+				local pos = predicted + t.CFrame.LookVector * _G.GuardDistanceV2
+				Humanoid:Move((pos - HRP.Position).Unit, false)
+			end
+		end
+	end
+
+	-- Legit
+	if _G.LegitAutoGuard then
+		CurrentTargetLegit = CurrentTargetLegit or GetClosestPlayer()
+		if CurrentTargetLegit and CurrentTargetLegit.Character then
+			local t = CurrentTargetLegit.Character:FindFirstChild("HumanoidRootPart")
+			if t then
+				local predicted = t.Position + t.Velocity * 0.12
+				local pos = predicted + t.CFrame.LookVector * _G.LegitGuardDistance
+
+				local dir = (pos - HRP.Position)
+				if dir.Magnitude > 0.1 then
+					local raw = dir.Unit
+					lastMoveDir = lastMoveDir:Lerp(raw, _G.LegitSmoothness)
+					currentSpeed = currentSpeed + (1 - currentSpeed) * _G.LegitSmoothness
+					Humanoid:Move(lastMoveDir * currentSpeed, false)
+				end
+			end
+		end
+	end
+
+	BtnV1.Text = "V1\n" .. (_G.AutoGuardV1 and "ON" or "OFF")
+	BtnV2.Text = "V2\n" .. (_G.AutoGuardV2 and "ON" or "OFF")
+	BtnLegit.Text = "Legit\n" .. (_G.LegitAutoGuard and "ON" or "OFF")
+
+end)
+
+-- =========================================
+-- RAYFIELD AUTO STEAL TOGGLE
+-- =========================================
+
+local AutoSteal = false
+
+DefenseTab:CreateToggle({
+    Name = "Auto Steal",
+    CurrentValue = false,
+    Callback = function(Value)
+        AutoSteal = Value
+
+        if AutoSteal then
+            print("Not added yet")
+        end
+    end
+})
+
+-- =========================
+-- AUTO BLOCK TOGGLE
+-- =========================
+
+local AutoBlock = false
+
+DefenseTab:CreateToggle({
+    Name = "Auto Block",
+    CurrentValue = false,
+    Callback = function(Value)
+        AutoBlock = Value
+
+        if AutoBlock then
+            print("Not added yet")
+        end
+    end
+})
+
+-- =========================================
+-- RAYFIELD TOGGLE
+-- =========================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local MagsEnabled = false
+
+DefenseTab:CreateToggle({
+    Name = "Ball Mags (8 Studs)",
+    CurrentValue = false,
+    Flag = "BallMagsToggle",
+    Callback = function(Value)
+        MagsEnabled = Value
+    end,
+})
+
+-- =========================================
+-- SCRIPT BELOW TOGGLE
+-- =========================================
+
+RunService.Heartbeat:Connect(function()
+
+    if not MagsEnabled then return end
+
+    local character = player.Character
+    if not character then return end
+
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    for _, obj in next, workspace:GetDescendants() do
+        if obj.Name == "Ball" and obj:IsA("BasePart") then
+
+            local dist = (obj.Position - hrp.Position).Magnitude
+
+            if dist <= 8 then
+                firetouchinterest(obj, hrp, 0)
+                firetouchinterest(obj, hrp, 1)
+            end
+        end
+    end
+
+end)
+
+local PhysicsTab = Window:CreateTab("Physics", nil) -- Title, Image
+local PhysicsSection = PhysicsTab:CreateSection("Moving") -- Changed 'Tab' to 'MainTab'
+
+-- =========================================
+-- RAYFIELD TOGGLE + SLIDER
+-- =========================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+local CFrameSpeedEnabled = false
+local CFrameSpeedValue = 1.5 -- default
+
+PhysicsTab:CreateToggle({
+    Name = "CFrame Speed",
+    CurrentValue = false,
+    Flag = "CFrameSpeedToggle",
+    Callback = function(Value)
+        CFrameSpeedEnabled = Value
+    end,
+})
+
+PhysicsTab:CreateSlider({
+    Name = "CFrame Speed Value",
+    Range = {0.01, 5}, -- you can change max if you want
+    Increment = 0.01,
+    CurrentValue = 1.5,
+    Flag = "CFrameSpeedSlider",
+    Callback = function(Value)
+        CFrameSpeedValue = Value
+    end,
+})
+
+-- =========================================
+-- SCRIPT BELOW TOGGLE
+-- =========================================
+
+repeat task.wait() until game:IsLoaded()
+
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+player.CharacterAdded:Connect(function(char)
+    character = char
+    humanoid = char:WaitForChild("Humanoid")
+    hrp = char:WaitForChild("HumanoidRootPart")
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not CFrameSpeedEnabled then return end
+    if not humanoid or not hrp then return end
+
+    local moveDir = humanoid.MoveDirection
+    if moveDir.Magnitude > 0 then
+        hrp.CFrame = hrp.CFrame + (moveDir * CFrameSpeedValue)
+    end
+end)
+
+-- =========================================
+-- RAYFIELD TOGGLE + SLIDER
+-- =========================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local GlideEnabled = false
+local GlideForceValue = 0.15 -- default
+
+PhysicsTab:CreateToggle({
+    Name = "Movement Glide",
+    CurrentValue = false,
+    Flag = "MovementGlideToggle",
+    Callback = function(Value)
+        GlideEnabled = Value
+    end,
+})
+
+PhysicsTab:CreateSlider({
+    Name = "Glide Force",
+    Range = {0.01, 1}, -- lower = lighter slide, higher = stronger slide
+    Increment = 0.01,
+    CurrentValue = 0.15,
+    Flag = "GlideForceSlider",
+    Callback = function(Value)
+        GlideForceValue = Value
+    end,
+})
+
+-- =========================================
+-- SCRIPT BELOW TOGGLE
+-- =========================================
+
+local char = player.Character or player.CharacterAdded:Wait()
+local hrp = char:WaitForChild("HumanoidRootPart")
+local hum = char:WaitForChild("Humanoid")
+
+player.CharacterAdded:Connect(function(newChar)
+    char = newChar
+    hrp = newChar:WaitForChild("HumanoidRootPart")
+    hum = newChar:WaitForChild("Humanoid")
+end)
+
+local SPEED = 16
+local MAX_GLIDE = 10
+
+local glideVel = Vector3.zero
+
+UIS.InputBegan:Connect(function(input)
+    if not GlideEnabled then return end
+
+    if input.KeyCode == Enum.KeyCode.W 
+    or input.KeyCode == Enum.KeyCode.A
+    or input.KeyCode == Enum.KeyCode.S
+    or input.KeyCode == Enum.KeyCode.D then
+        glideVel = Vector3.zero
+    end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+    if not GlideEnabled then return end
+    if not hum or hum.Health <= 0 then return end
+
+    hum.WalkSpeed = SPEED
+
+    local moveDir = hum.MoveDirection
+
+    if moveDir.Magnitude > 0 then
+        hrp.Velocity = moveDir * SPEED
+    else
+        glideVel = glideVel * (1 - GlideForceValue)
+        glideVel = glideVel + Vector3.new(0, -workspace.Gravity * dt, 0)
+
+        if glideVel.Magnitude > MAX_GLIDE then
+            glideVel = glideVel.Unit * MAX_GLIDE
+        end
+
+        hrp.Velocity = glideVel
+    end
+end)
