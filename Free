@@ -45,7 +45,9 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
 --// Path you gave
-local shotMeter = workspace:WaitForChild("scriplic")
+local player = game:GetService("Players").LocalPlayer
+
+local shotMeter = workspace:WaitForChild(player.Name)
     :WaitForChild("Properties")
     :WaitForChild("ShotMeter")
 
